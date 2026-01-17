@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="UTF-8">
+    <title>Fyn Vandkemi Stoftransport Kemidata</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/3.0.1/chartjs-plugin-annotation.min.js"></script>
+    
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background: #f4f4f9; color: #333; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 8px; }
+        h2 { color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        h3 { color: #005a9e; margin-top: 30px; font-size: 1.2em; }
+        
+        .controls-header { background: #e9ecef; padding: 20px; border-radius: 6px; display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 20px; }
+        .control-group { display: flex; flex-direction: column; }
+        label { font-weight: bold; margin-bottom: 5px; font-size: 14px; color: #555; }
+        input[type="date"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        
+        button { padding: 10px 25px; background: #0078d4; color: white; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; font-size: 14px; transition: background 0.2s; }
+        button:hover { background: #005a9e; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        
+        .btn-green { background: #28a745; margin-left: auto; }
+        .btn-green:hover { background: #218838; }
+
+        .btn-small { padding: 5px 15px; font-size:12px; margin-right:5px; background: #6c757d; color: white; border: none; cursor: pointer; border-radius: 3px; }
+        .btn-small:hover { background: #5a6268; }
+
+        .filter-section { border: 1px solid #ddd; padding: 15px; border-radius: 6px; display: none; background: #fafafa; margin-top: 20px; }
+        .filter-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .filter-links a { color: #0078d4; cursor: pointer; text-decoration: underline; margin-left: 15px; font-size: 13px; }
+        .filter-box { max-height: 200px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; border: 1px solid #eee; padding: 10px; background: #fff; }
+        .filter-item { font-size: 12px; display: flex; align-items: center; gap: 8px; }
+
+        .chart-wrapper { overflow-x: auto; border: 1px solid #eee; margin-top: 15px; padding: 15px; background: #fff; border-radius: 4px; }
+        .chart-container { position: relative; height: 450px; min-width: 100%; }
+        
+        #detailsSection { margin-top: 40px; display: none; border-top: 4px solid #0078d4; padding-top: 20px; }
+        .details-info { margin-bottom: 15px; font-size: 14px; }
+        .vanda-link { display: inline-block; margin-top: 5px; color: #fff; background-color: #28a745; padding: 5px 10px; text-decoration: none; border-radius: 3px; font-size: 12px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; color: #333; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        
+        /* KS Niveau farver i tabel */
+        .ks-cell { font-weight:bold; text-align:center; }
+        .ks-0 { background-color: #d4edda; color: #155724; } 
+        .ks-1 { background-color: #cce5ff; color: #004085; } 
+        .ks-2 { background-color: #fff3cd; color: #856404; } 
+        .ks-3 { background-color: #f8d7da; color: #721c24; } 
+        .ks-unknown { background-color: #f0f0f0; color: #666; }
+
+        /* Legend dots */
+        .legend-item { display: inline-flex; align-items: center; margin-right: 15px; font-size: 13px; color: #666; }
+        .legend-dot { width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
+
+        hr { margin: 40px 0; border: 0; border-top: 2px solid #eee; }
+        #log { background: #222; color: #0f0; padding: 15px; margin-top: 30px; font-family: 'Consolas', monospace; height: 100px; overflow-y: auto; font-size: 12px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Fyn Vandkemi Stoftransport Kemidata</h2>
+    
+    <div class="controls-header">
+        <div class="control-group">
+            <label for="startDate">Start Dato:</label>
+            <input type="date" id="startDate" value="2026-01-01">
+        </div>
+        <div class="control-group">
+            <label for="endDate">Slut Dato:</label>
+            <input type="date" id="endDate" value="2026-01-17">
+        </div>
+        <button id="btnFetch" onclick="startAnalysis()">Hent Data</button>
+        <button id="btnDownload" onclick="downloadRawData()" class="btn-green" disabled>Download Rådata (Zip)</button>
+    </div>
+
+    <h3>Antal Prøver pr Station</h3>
+    <div class="chart-wrapper">
+        <div class="chart-container" id="chartBox1">
+            <canvas id="chartVisits"></canvas>
+        </div>
+    </div>
+
+    <div id="filterContainer" class="filter-section">
+        <div class="filter-header">
+            <h3 style="margin:0;">2. Filter (Parametre)</h3>
+            <div class="filter-links">
+                <button class="btn-small" onclick="updateScatterChart()">Opdater Graf</button>
+                <a onclick="toggleAllFilters(true)">Vælg alle</a>
+                <a onclick="toggleAllFilters(false)">Fravælg alle</a>
+            </div>
+        </div>
+        <div id="filterList" class="filter-box"></div>
+    </div>
+
+    <hr>
+
+    <h3>3. Antal parametre pr. Prøve</h3>
+	<p style="font-size:13px; color:#666;">Klik på et punkt for at se tidsserie og tabel.</p>
+    <div id="legendContainer" style="margin-bottom: 5px;"></div>
+    
+    <div class="chart-wrapper">
+        <div class="chart-container" id="chartBox2">
+            <canvas id="chartParams"></canvas>
+        </div>
+    </div>
+
+    <div id="detailsSection">
+        <h3>4. Detaljer for valgt prøve</h3>
+        <div id="detailsInfo" class="details-info"></div>
+        
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:30px;">
+            <h4 style="margin:0; color:#444;">Tidsserie for valgt station</h4>
+            <button class="btn-small" onclick="resetZoomChart()">Nulstil Zoom ⟲</button>
+        </div>
+        <p style="font-size:12px; color:#666;">Marker et område med musen for at zoome ind.</p>
+        
+        <div class="chart-wrapper">
+            <div class="chart-container" id="chartBox3">
+                <canvas id="chartTime"></canvas>
+            </div>
+        </div>
+
+        <div style="max-height: 400px; overflow-y: auto;">
+            <table id="detailsTable">
+                <thead>
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Status</th>
+                        <th>Værdi</th>
+                        <th style="width:80px;">KS niveau</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="log">Klar...</div>
+</div>
+
+<script>
+    const logDiv = document.getElementById('log');
+    const btnFetch = document.getElementById('btnFetch');
+    const btnDownload = document.getElementById('btnDownload');
+    const filterContainer = document.getElementById('filterContainer');
+    const filterListDiv = document.getElementById('filterList');
+    const detailsSection = document.getElementById('detailsSection');
+    const detailsTableBody = document.querySelector('#detailsTable tbody');
+    const detailsInfo = document.getElementById('detailsInfo');
+    const legendContainer = document.getElementById('legendContainer');
+
+    let chartVisits = null;
+    let chartParams = null;
+    let chartTime = null; 
+    
+    let structuredData = {}; 
+    let stationHistory = {}; 
+    let allParameters = new Set(); 
+    let rawZipBlob = null;
+
+    // Farve-definitioner for KS niveauer
+    const ksColors = {
+        0: 'rgba(46, 204, 113, 0.8)',   // Grøn
+        1: 'rgba(52, 152, 219, 0.8)',   // Blå
+        2: 'rgba(241, 196, 15, 0.8)',   // Gul
+        3: 'rgba(231, 76, 60, 0.8)',    // Rød
+        '-1': 'rgba(149, 165, 166, 0.8)' // Grå
+    };
+
+    function log(msg) {
+        const time = new Date().toLocaleTimeString();
+        logDiv.innerHTML = `[${time}] ${msg}<br>` + logDiv.innerHTML;
+        console.log(msg);
+    }
+
+    async function startAnalysis() {
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        if (!startDate || !endDate) return alert("Angiv periode.");
+
+        btnFetch.disabled = true;
+        btnDownload.disabled = true;
+        btnFetch.textContent = "Henter...";
+        
+        filterContainer.style.display = "none";
+        detailsSection.style.display = "none";
+        structuredData = {};
+        stationHistory = {};
+        allParameters.clear();
+
+        const url = "https://kemidata.miljoeportal.dk/api/download";
+        const payload = {
+            "language": "da",
+            "searchValues": ["Datamart Vandkemi Hydrometri"],
+            "period": { "showLastResult": false, "fromDate": `${startDate}T00:00:00.000+01:00`, "toDate": `${endDate}T23:59:59.000+01:00` },
+            "dataResponsibles": ["25798376"],
+            "searchBy": "ExaminationTypes",
+            "area": { "type": "Polygon", "geoJsonString": "{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"geometry\":{\"type\":\"Polygon\",\"coordinates\":[[[554076.0871920827,6162263.181593628],[577265.2314119883,6176023.518064388],[621486.3901569245,6152819.81342742],[618520.3368264714,6114506.71972452],[606116.8410809406,6084827.562630723],[573490.2544459571,6098857.709620518],[549761.8278023328,6115046.340762589],[543290.438717708,6145534.929413488],[554076.0871920827,6162263.181593628]]]},\"properties\":null}]}" },
+            "isDownloadAll": true,
+            "sessionId": null, 
+            "localId": null
+        };
+
+        try {
+            const res = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            
+            const blob = await res.blob();
+            if (blob.type.includes("json")) throw new Error("Server returnerede JSON");
+
+            rawZipBlob = blob;
+            btnDownload.disabled = false;
+            
+            log(`Hentet ${(blob.size/1024/1024).toFixed(2)} MB.`);
+            
+            const zip = await JSZip.loadAsync(blob);
+            const filename = Object.keys(zip.files)[0];
+            const csvText = await zip.files[filename].async("string");
+
+            processCSV(csvText);
+        } catch (e) {
+            log("Fejl: " + e.message);
+        } finally {
+            btnFetch.disabled = false;
+            btnFetch.textContent = "Hent Data";
+        }
+    }
+
+    function downloadRawData() {
+        if (!rawZipBlob) return;
+        const url = window.URL.createObjectURL(rawZipBlob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        const dato = new Date().toISOString().split('T')[0];
+        a.download = `kemidata_${dato}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+    }
+
+    function processCSV(csv) {
+        const lines = csv.split('\n');
+        const separator = lines[0].includes('\t') ? '\t' : ';';
+        const headers = lines[0].split(separator).map(h => h.trim());
+        
+        const idxStation = headers.indexOf("Stedtekst");
+        const idxDate = headers.indexOf("Dato");
+        const idxParam = headers.indexOf("Stofparameter");
+        const idxLink = headers.indexOf("Link");
+        const idxResult = headers.indexOf("Resultat");
+        const idxQuality = headers.indexOf("Kvalitetsmærke");
+
+        if (idxStation < 0) return log("Mangler kolonner.");
+
+        for (let i = 1; i < lines.length; i++) {
+            const row = lines[i].split(separator);
+            if (row.length < idxStation) continue;
+
+            const station = (row[idxStation] || "").replace(/"/g, '').trim();
+            const rawDateStr = (row[idxDate] || "").trim(); 
+            const param = (row[idxParam] || "").trim();
+            
+            let quality = -1;
+            if (idxQuality > -1 && row[idxQuality]) {
+                const qStr = row[idxQuality].replace(/"/g, '').trim();
+                if (qStr !== "") quality = parseInt(qStr, 10);
+            }
+            
+            let val = null;
+            if (idxResult > -1 && row[idxResult]) {
+                val = parseFloat(row[idxResult].replace(',', '.'));
+            }
+
+            if (station && rawDateStr && param) {
+                const cleanDate = formatDateToISO(rawDateStr);
+
+                if (!structuredData[station]) structuredData[station] = {};
+                if (!structuredData[station][cleanDate]) {
+                    structuredData[station][cleanDate] = { 
+                        params: [], 
+                        link: "", 
+                        values: {},
+                        qualities: {} 
+                    };
+                }
+
+                structuredData[station][cleanDate].params.push(param);
+                if (val !== null && !isNaN(val)) {
+                    structuredData[station][cleanDate].values[param] = val;
+                }
+                
+                structuredData[station][cleanDate].qualities[param] = quality;
+
+                allParameters.add(param);
+                if (!structuredData[station][cleanDate].link && idxLink > -1 && row[idxLink]) {
+                    structuredData[station][cleanDate].link = row[idxLink].replace(/"/g, '').trim();
+                }
+
+                if (val !== null && !isNaN(val)) {
+                    if (!stationHistory[station]) stationHistory[station] = [];
+                    stationHistory[station].push({
+                        date: cleanDate, 
+                        param: param,
+                        value: val,
+                        quality: quality
+                    });
+                }
+            }
+        }
+
+        log(`Data parset.`);
+        drawVisitsChart();
+        buildFilterUI();
+        updateScatterChart();
+    }
+
+    function formatDateToISO(dateStr) {
+        let d = dateStr.split(/[ T]/)[0];
+        const parts = d.split(/[\/\-\.]/);
+        if (parts.length === 3) {
+            if (parts[2].length === 4) {
+                return `${parts[2]}-${parts[1]}-${parts[0]}`;
+            }
+        }
+        return d;
+    }
+
+    // --- CHARTS ---
+
+    function drawVisitsChart() {
+        const labels = Object.keys(structuredData).sort();
+        const dataCounts = labels.map(station => Object.keys(structuredData[station]).length);
+        const width = Math.max(100, labels.length * 30);
+        document.getElementById('chartBox1').style.width = `${width}px`;
+
+        const ctx = document.getElementById('chartVisits').getContext('2d');
+        if (chartVisits) chartVisits.destroy();
+        chartVisits = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{ label: 'Antal Prøver', data: dataCounts, backgroundColor: '#0078d4', borderRadius: 3 }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { autoSkip: false, maxRotation: 90 } } }, plugins: { legend: { display: false } } }
+        });
+    }
+
+    function buildFilterUI() {
+        filterListDiv.innerHTML = "";
+        const sortedParams = Array.from(allParameters).sort();
+        sortedParams.forEach(param => {
+            const safeId = "chk_" + param.replace(/[^a-zA-Z0-9]/g, "_");
+            const div = document.createElement("div");
+            div.className = "filter-item";
+            div.innerHTML = `<input type="checkbox" checked value="${param}" id="${safeId}"> <label for="${safeId}">${param}</label>`;
+            filterListDiv.appendChild(div);
+        });
+        filterContainer.style.display = "block";
+    }
+
+    function toggleAllFilters(checked) {
+        filterListDiv.querySelectorAll("input[type='checkbox']").forEach(cb => cb.checked = checked);
+        updateScatterChart();
+    }
+
+    function updateScatterChart() {
+        const checkboxes = filterListDiv.querySelectorAll("input[type='checkbox']:checked");
+        const selectedParams = new Set(Array.from(checkboxes).map(cb => cb.value));
+        let scatterPoints = [];
+        const stationList = Object.keys(structuredData).sort();
+
+        // Variabler til Legend generering
+        let foundQualities = new Set();
+
+        stationList.forEach((station, index) => {
+            const visits = structuredData[station];
+            Object.keys(visits).forEach(date => {
+                const visitData = visits[date];
+                const matchedParamsRaw = visitData.params.filter(p => selectedParams.has(p));
+                const uniqueParams = new Set(matchedParamsRaw);
+                const count = uniqueParams.size;
+                
+                if (count > 0) {
+                    const jitterX = (Math.random() - 0.5) * 0.6; 
+                    const jitterY = (Math.random() - 0.5) * 0.2;
+
+                    // --- NY LOGIK: FIND LAVESTE KS NIVEAU (Min) ---
+                    // Vi leder efter den mindste værdi blandt de valgte parametre
+                    let minQual = 999; 
+                    let hasValidQual = false;
+
+                    uniqueParams.forEach(p => {
+                        const q = visitData.qualities[p];
+                        // Vi tjekker kun gyldige tal >= 0
+                        if (q !== undefined && q !== -1) {
+                            if (q < minQual) minQual = q;
+                            hasValidQual = true;
+                        }
+                    });
+
+                    // Hvis vi ikke fandt nogen gyldige, sæt til -1
+                    if (!hasValidQual) minQual = -1;
+                    
+                    foundQualities.add(minQual);
+
+                    scatterPoints.push({
+                        x: index + jitterX, 
+                        y: count + jitterY,
+                        rawStation: station, rawDate: date, rawCount: count, 
+                        rawParams: visitData.params, rawValues: visitData.values, rawLink: visitData.link,
+                        rawMinQual: minQual // Gem laveste kvalitet
+                    });
+                }
+            });
+        });
+        
+        updateLegend(foundQualities);
+
+        const width = Math.max(100, stationList.length * 40);
+        document.getElementById('chartBox2').style.width = `${width}px`;
+        const ctx = document.getElementById('chartParams').getContext('2d');
+        if (chartParams) chartParams.destroy();
+
+        chartParams = new Chart(ctx, {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: 'Prøver',
+                    data: scatterPoints,
+                    backgroundColor: ctx => {
+                        const q = ctx.raw?.rawMinQual;
+                        return ksColors[q] || ksColors['-1'];
+                    },
+                    pointRadius: 3, pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                onClick: (e) => {
+                    const points = chartParams.getElementsAtEventForMode(e, 'nearest', { intersect: true }, true);
+                    if (points.length) showDetails(chartParams.data.datasets[0].data[points[0].index], selectedParams);
+                },
+                plugins: { 
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: (ctx) => `${ctx[0].raw.rawStation} (${ctx[0].raw.rawDate})`,
+                            label: (ctx) => `Parametre: ${ctx.raw.rawCount} (Laveste KS: ${ctx.raw.rawMinQual})`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'linear', position: 'bottom', min: -0.5, max: stationList.length - 0.5,
+                        ticks: { stepSize: 1, callback: val => stationList[Math.round(val)], autoSkip: false, maxRotation: 90, minRotation: 90 }
+                    }
+                }
+            }
+        });
+    }
+    
+    function updateLegend(foundQualitiesSet) {
+        legendContainer.innerHTML = "";
+        
+        // Filter bort -1 hvis man ikke vil se "Ukendt" i legenden
+        // const sortedQuals = Array.from(foundQualitiesSet).filter(q => q !== -1).sort((a,b) => a - b);
+        const sortedQuals = Array.from(foundQualitiesSet).sort((a,b) => a - b);
+        
+        sortedQuals.forEach(q => {
+            const span = document.createElement("span");
+            span.className = "legend-item";
+            const color = ksColors[q] || ksColors['-1'];
+            const label = q === -1 ? "Ukendt" : `KS niveau ${q}`;
+            
+            span.innerHTML = `<span class="legend-dot" style="background:${color}"></span> ${label}`;
+            legendContainer.appendChild(span);
+        });
+        
+        if (sortedQuals.length === 0) {
+            legendContainer.innerHTML = "<small style='color:#999'>Ingen data vist</small>";
+        }
+    }
+
+    function showDetails(point, selectedFilterSet) {
+        detailsSection.style.display = 'block';
+        detailsSection.scrollIntoView({ behavior: 'smooth' });
+        
+        let htmlInfo = `<b>Station:</b> ${point.rawStation} <br> <b>Dato:</b> ${point.rawDate}`;
+        if (point.rawLink) htmlInfo += `<br><a href="${point.rawLink}" target="_blank" class="vanda-link">Åbn i Vanda</a>`;
+        detailsInfo.innerHTML = htmlInfo;
+        
+        detailsTableBody.innerHTML = "";
+        
+        const uniqueParamsInSample = new Set(point.rawParams); 
+        const allFilters = Array.from(selectedFilterSet).sort();
+
+        allFilters.forEach(paramName => {
+            const tr = document.createElement('tr');
+            const isPresent = uniqueParamsInSample.has(paramName);
+            const val = isPresent && point.rawValues[paramName] !== undefined ? point.rawValues[paramName] : '-';
+            
+            let qual = '';
+            let qualClass = '';
+            
+            if (isPresent) {
+                 const qNum = structuredData[point.rawStation][point.rawDate].qualities[paramName];
+                 if (qNum !== undefined && qNum !== -1) {
+                     qual = qNum;
+                     qualClass = `ks-${qNum} ks-cell`; 
+                 } else if (qNum === -1 || isNaN(qNum)) {
+                     qual = '?';
+                     qualClass = 'ks-unknown ks-cell';
+                 }
+            }
+
+            tr.innerHTML = `
+                <td>${paramName}</td>
+                <td>${isPresent ? 'Fundet' : 'Mangler'}</td>
+                <td>${val}</td>
+                <td class="${qualClass}">${qual}</td>
+            `;
+            detailsTableBody.appendChild(tr);
+        });
+
+        drawTimeSeries(point.rawStation, point.rawDate, selectedFilterSet);
+    }
+
+    function drawTimeSeries(stationName, selectedDate, selectedFilterSet) {
+        const ctx = document.getElementById('chartTime').getContext('2d');
+        if (chartTime) chartTime.destroy();
+
+        const history = stationHistory[stationName] || [];
+        const datasets = [];
+        const activeParams = Array.from(selectedFilterSet);
+        const colors = ['#0078d4', '#e74c3c', '#2ecc71', '#f1c40f', '#9b59b6', '#34495e', '#e67e22'];
+        
+        activeParams.forEach((param, i) => {
+            let measurements = history
+                .filter(m => m.param === param)
+                .map(m => { return { x: m.date, y: m.value }; }); 
+
+            measurements.sort((a, b) => new Date(a.x) - new Date(b.x));
+
+            if (measurements.length > 0) {
+                datasets.push({
+                    label: param,
+                    data: measurements,
+                    borderColor: colors[i % colors.length],
+                    backgroundColor: colors[i % colors.length],
+                    tension: 0.1,
+                    pointRadius: 4,
+                    spanGaps: true
+                });
+            }
+        });
+
+        chartTime = new Chart(ctx, {
+            type: 'line',
+            data: { datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    title: { display: true, text: `Historik for ${stationName}` },
+                    zoom: {
+                        zoom: { 
+                            drag: { enabled: true, backgroundColor: 'rgba(54,162,235,0.3)' },
+                            mode: 'x' 
+                        }
+                    },
+                    annotation: {
+                        annotations: {
+                            line1: {
+                                type: 'line',
+                                xMin: selectedDate,
+                                xMax: selectedDate,
+                                borderColor: 'rgba(255, 0, 0, 0.8)',
+                                borderWidth: 2,
+                                borderDash: [5, 5],
+                                label: { display: true, content: 'Valgt', position: 'start' }
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { 
+                        type: 'time', 
+                        time: { unit: 'day', tooltipFormat: 'yyyy-MM-dd' },
+                        title: { display: true, text: 'Dato' } 
+                    }, 
+                    y: { title: { display: true, text: 'Resultat' } }
+                }
+            }
+        });
+    }
+
+    function resetZoomChart() {
+        if (chartTime) chartTime.resetZoom();
+    }
+</script>
+
+</body>
+</html>
